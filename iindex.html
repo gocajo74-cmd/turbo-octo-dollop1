@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Decision Lab – decisions under uncertainty</title>
+<style>
+:root{--bg:#eef2f6;--gl:#dde5ee;--card:#fff;--ink:#10263a;--mut:#56677e;--line:#c9d5e2;--ac:#0f766e;--hi:#fde9b0;--th:#e4edf5;--warn:#c2410c}
+@media(prefers-color-scheme:dark){:root{--bg:#0b1724;--gl:#122434;--card:#112233;--ink:#e6eef7;--mut:#94a8bf;--line:#27405a;--ac:#5eead4;--hi:#5a4710;--th:#1a3148;--warn:#fb923c}}
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);font:15px/1.55 "Segoe UI",system-ui,sans-serif;background:var(--bg) linear-gradient(var(--gl) 1px,transparent 1px),linear-gradient(90deg,var(--gl) 1px,transparent 1px);background-size:24px 24px}
+main{max-width:1040px;margin:auto;padding:28px 14px 60px}
+h1{font-size:2.3rem;letter-spacing:-.03em;margin:0}
+h2{font-size:1.2rem;margin:0 0 10px}
+h3{font-size:1rem;margin:0 0 6px}
+.sub{color:var(--mut);max-width:62ch;margin:4px 0 18px}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin:16px 0}
+.wrap{overflow-x:auto}
+table{border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{border:1px solid var(--line);padding:4px 7px;text-align:right}
+th{background:var(--th)}
+td:first-child,th:first-child{text-align:left}
+tr.win td{background:var(--hi);font-weight:700}
+input,select,button{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:5px 7px}
+input[type=number]{width:80px;text-align:right}
+input.nm{width:118px;text-align:left;font-weight:600}
+button{cursor:pointer;padding:6px 12px}button:hover{border-color:var(--ac)}button.add{color:var(--ac);border-color:var(--ac);font-weight:600}button.quiet{color:var(--mut)}
+button.x{border:0;background:none;color:var(--warn);padding:0 5px}
+button.go{background:var(--ac);border-color:var(--ac);color:var(--bg)}
+:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 10px}
+.why{color:var(--mut);margin:8px 0 0}
+.warn{color:var(--warn)}
+small{display:block;color:var(--mut);font-weight:400;font-size:.75rem}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.grid>div{min-width:0}
+details{margin:0 0 6px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 16px}summary{cursor:pointer;font-weight:600}ol{margin:8px 0 2px;padding-left:20px}li{margin:3px 0}
+.empty{color:var(--mut);padding:16px;border:1px dashed var(--line);border-radius:8px;margin:0}input::placeholder{color:var(--mut);opacity:.55}
+</style></head><body><main>
+<h1>Decision Lab</h1>
+<p class="sub">Compare your options when you do not know what will happen. Type your numbers and the page shows which alternative wins under Maximax, Maximin, Minimax Regret and EMV, and explains why.</p>
+<details open><summary>How to use it</summary><ol><li>Name your <b>alternatives</b> (rows: what you can choose) and your <b>states of nature</b> (columns: what might happen).</li><li>Fill in the table. Enter the payoffs directly, or enter units, revenues and costs and let the page calculate the payoffs.</li><li>Read the results below. Every card shows the winner and the reason.</li></ol></details>
+
+<section><h2>Your problem</h2>
+<div class="bar">
+<label>I have <select id="mode"><option value="0">the payoffs already<option value="1">revenues and costs (calculate the payoffs for me)</select></label>
+<button class="add" id="aA" title="Adds a row">+ Add alternative</button><button class="add" id="aS" title="Adds a column">+ Add state of nature</button><button class="quiet" id="clr">Clear all</button>
+</div>
+<div class="wrap" id="inp"></div><p class="why" id="hint"></p></section>
+
+<section id="sp" hidden><h2>Payoff table (calculated)</h2><div id="pay"></div>
+<p class="why">Each cell shows its own calculation, so you can see exactly how it was calculated.</p></section>
+
+<section><h2>Results by criterion</h2><p class="why" style="margin:0 0 10px">The highlighted row is the best alternative for each criterion.</p><div class="grid" id="crit"></div></section>
+
+<section><h2>Pick the best alternatives</h2><p class="why" style="margin:0 0 8px">Rank all alternatives and highlight the best ones for the criterion you choose.</p>
+<div class="bar">Show the top <input type="number" id="selN" value="4" min="1" style="width:60px"> alternatives by
+<select id="selC"><option>Maximax<option>Maximin<option>Minimax Regret<option>EMV</select></div>
+<div class="wrap" id="rank"></div></section>
+
+<section><h2>Probability sensitivity</h2>
+<p class="why" style="margin:0 0 8px">Optional. Use this when a probability depends on an unknown p, for example P(S1) = p and P(S2) = p/2. For each state except the last, enter its multiplier of p (1 for p, 0.5 for p/2, 2 for 2p). The last state takes the rest: 1 minus the sum of the others.</p>
+<div class="wrap" id="kin"></div><div id="sens"></div></section>
+<p class="why" style="text-align:center">Everything runs in your browser. Nothing you type is saved or sent anywhere.</p></main>
+<script>
+const $=s=>document.querySelector(s),fm=x=>x==null?'—':String(+(+x).toFixed(4)),sg=x=>(x<0?'−':'+')+Math.abs(x),
+E=(a,b)=>Array.from({length:a},(_,i)=>b(i)),q=s=>String(s).replace(/[&<>"]/g,c=>'&#'+c.charCodeAt(0)+';');
+let D;
+function norm(){const n=D.A.length,m=D.S.length,M=x=>E(n,i=>E(m,j=>(x&&x[i]&&x[i][j])||0)),V=(x,L)=>E(L,i=>(x&&x[i])||0);
+D.X=M(D.X);D.Q=M(D.Q);['a','v','f'].forEach(k=>D[k]=V(D[k],n));['s','g','p'].forEach(k=>D[k]=V(D[k],m));D.k=E(m-1,j=>(D.k&&D.k[j])??1)}
+const pay=()=>D.A.map((_,i)=>D.S.map((_,j)=>D.b?D.Q[i][j]*(D.a[i]+D.s[j]-D.v[i])+D.f[i]+D.g[j]:D.X[i][j]));
+function load(){D={b:0,A:['Alternative 1','Alternative 2','Alternative 3'],S:['State 1','State 2','State 3']};$('#mode').value=0;render()}
+
+function render(){norm();const m=D.S.length,b=D.b,M=b?'Q':'X';
+const I=(k,i,j,v)=>`<input type="number" step="any" data-k="${k}"${i==null?'':` data-i="${i}"`}${j==null?'':` data-j="${j}"`} value="${v||''}" placeholder="0">`,
+N=(k,i,v)=>`<input class="nm" data-k="${k}" data-${k=='A'?'i':'j'}="${i}" value="${q(v)}"><button class="x" data-del="${k}" data-n="${i}" title="Remove">×</button>`;
+let h=`<table><tr><th>Alternative ↓ State →${D.S.map((s,j)=>`<th>${N('S',j,s)}`).join('')}`+(b?'<th>Base revenue / unit<th>Variable cost / unit<th>Fixed net (+ income, − cost)':'')+'</tr>';
+D.A.forEach((a,i)=>{h+=`<tr><td>${N('A',i,a)}`+D[M][i].map((v,j)=>`<td>${I(M,i,j,v)}`).join('')+(b?['a','v','f'].map(k=>`<td>${I(k,i,null,D[k][i])}`).join(''):'')+'</tr>'});
+if(b)h+=`<tr><td>Surcharge / unit (state)${D.S.map((_,j)=>`<td>${I('s',null,j,D.s[j])}`).join('')}</tr><tr><td>Fixed net (state)${D.S.map((_,j)=>`<td>${I('g',null,j,D.g[j])}`).join('')}</tr>`;
+h+=`<tr><td>P(state)${D.S.map((_,j)=>`<td>${I('p',null,j,D.p[j])}`).join('')}</tr></table>`;
+$('#inp').innerHTML=h;
+$('#kin').innerHTML=`<table><tr><th>State${D.S.map(s=>`<th>${q(s)}`).join('')}</tr><tr><td>P(state)${D.S.map((_,j)=>j<m-1?`<td>${I('k',null,j,D.k[j])} · p`:'<td>1 − Σk · p').join('')}</tr></table>`;
+calc()}
+
+function calc(){const X=pay(),n=D.A.length,m=D.S.length,A=D.A.map(q),S=D.S.map(q),b=D.b;
+const cm=S.map((_,j)=>Math.max(...X.map(r=>r[j]))),R=X.map(r=>r.map((x,j)=>cm[j]-x)),
+mx=X.map(r=>Math.max(...r)),mn=X.map(r=>Math.min(...r)),rg=R.map(r=>Math.max(...r)),
+sp=D.p.reduce((a,c)=>a+c,0),ok=Math.abs(sp-1)<1e-3,ev=ok?X.map(r=>r.reduce((s,x,j)=>s+x*D.p[j],0)):A.map(()=>null),
+bs=(v,d)=>{const c=v.filter(x=>x!=null);if(!c.length)return[];const t=d>0?Math.max(...c):Math.min(...c);return v.map((x,i)=>x!=null&&Math.abs(x-t)<1e-9?i:-1).filter(i=>i>=0)},
+nm=w=>w.map(i=>A[i]).join(' / '),
+tb=(hd,rows,w)=>`<div class="wrap"><table><tr>${hd.map(x=>`<th>${x}`).join('')}</tr>${rows.map((r,i)=>`<tr${w.includes(i)?' class="win"':''}>${r.map(c=>`<td>${c}`).join('')}</tr>`).join('')}</table></div>`,
+cd=(t,tbl,why)=>`<div><h3>${t}</h3>${tbl}<p class="why">${why}</p></div>`,
+wx=bs(mx,1),wn=bs(mn,1),wr=bs(rg,-1),we=bs(ev,1);
+$('#hint').innerHTML=(b?'Grid cells are <b>units</b> in each state. Payoff = units × (base revenue + state surcharge − variable cost) + fixed net of the alternative + fixed net of the state. Use negative numbers for fixed costs. ':'Grid cells are the <b>payoffs</b>. ')+`Σ P(state) = ${fm(sp)}${ok?' ✓':' (must equal 1 for EMV)'}`;
+$('#sp').hidden=!b;
+if(b)$('#pay').innerHTML=tb(['Alternative',...S],A.map((a,i)=>[a,...S.map((_,j)=>`<small>${fm(D.Q[i][j])}×(${fm(D.a[i])}${sg(D.s[j])}${sg(-D.v[i])})${sg(D.f[i]+D.g[j])}</small>${fm(X[i][j])}`)]),[]);
+if(X.every(r=>r.every(x=>x===0))){const e='<p class="empty">Enter your payoffs in the table above and the results will appear here.</p>';$('#crit').innerHTML=$('#rank').innerHTML=$('#sens').innerHTML=e;return}
+$('#crit').innerHTML=
+cd('Maximax (optimistic)',tb(['Alternative','Best payoff'],A.map((a,i)=>[a,fm(mx[i])]),wx),`Take the best possible payoff of each alternative and pick the largest: <b>${nm(wx)}</b> (${fm(mx[wx[0]])}). Why: it assumes the most favourable state happens. Risk: it ignores losses; its worst case is ${fm(mn[wx[0]])}.`)+
+cd('Maximin (conservative)',tb(['Alternative','Worst payoff'],A.map((a,i)=>[a,fm(mn[i])]),wn),`Take the worst payoff of each alternative and pick the largest: <b>${nm(wn)}</b> (${fm(mn[wn[0]])}). Why: it gives the best guaranteed outcome. Limitation: it ignores upside; its best case is only ${fm(mx[wn[0]])}.`)+
+cd('Minimax Regret',tb(['Alternative',...S,'Max regret'],A.map((a,i)=>[a,...R[i].map(fm),fm(rg[i])]),wr),`Regret = best payoff in that state (${S.map((s,j)=>s+': '+fm(cm[j])).join(', ')}) − the payoff you obtain. Take each alternative’s largest regret and pick the smallest: <b>${nm(wr)}</b> (${fm(rg[wr[0]])}). Why: it limits how much you could regret your choice.`)+
+cd('EMV / Bayes',tb(['Alternative','Calculation','EMV'],A.map((a,i)=>[a,X[i].map((x,j)=>`${fm(D.p[j])}×${fm(x)}`).join(' + '),fm(ev[i])]),we),ok?`EMV = Σ P(state) × payoff. Pick the highest: <b>${nm(we)}</b> (${fm(ev[we[0]])}). Why: it is the average payoff you would earn if the decision were repeated with these probabilities.`:`<span class="warn">To calculate EMV the probabilities must add up to 1 (now ${fm(sp)}). Fill in the P(state) row of the table above.</span>`);
+const C={Maximax:[mx,1],Maximin:[mn,1],'Minimax Regret':[rg,-1],EMV:[ev,1]},c=$('#selC').value,N=Math.max(1,Math.min(n,+$('#selN').value||1)),[v,d]=C[c],
+ord=A.map((_,i)=>i).filter(i=>v[i]!=null).sort((i,k)=>d*(v[k]-v[i]));
+$('#rank').innerHTML=ord.length?tb(['Rank','Alternative','Maximax','Maximin','Max regret','EMV'],ord.map((i,r)=>[r+1,A[i],fm(mx[i]),fm(mn[i]),fm(rg[i]),fm(ev[i])]),ord.slice(0,N).map((_,r)=>r))+`<p class="why">Top ${N} by ${c}: <b>${ord.slice(0,N).map(i=>A[i]).join(', ')}</b>. Sorted from ${d>0?'highest':'lowest'} because ${d>0?'a higher':'a lower'} score is better for this criterion.</p>`:'<p class="warn">EMV needs probabilities that add up to 1. Fill in the P(state) row first.</p>';
+const K=D.k.map(x=>Math.max(0,x)),sk=K.reduce((a,c)=>a+c,0),pm=sk>1?1/sk:1,L=X.map(r=>[r[m-1],K.reduce((s,k,j)=>s+k*(r[j]-r[m-1]),0)]);
+let bp=[0,pm];
+for(let i=0;i<n;i++)for(let l=i+1;l<n;l++){const dd=L[i][1]-L[l][1];if(Math.abs(dd)>1e-12){const p=(L[l][0]-L[i][0])/dd;if(p>1e-9&&p<pm-1e-9)bp.push(p)}}
+bp=[...new Set(bp.map(x=>+x.toFixed(9)))].sort((a,c)=>a-c);
+const seg=[];
+for(let k=0;k<bp.length-1;k++){const mid=(bp[k]+bp[k+1])/2,lab=nm(bs(L.map(l=>l[0]+l[1]*mid),1));
+if(seg.length&&seg[seg.length-1].l==lab)seg[seg.length-1].h=bp[k+1];else seg.push({l:lab,lo:bp[k],h:bp[k+1]})}
+$('#sens').innerHTML=`<p>${A.map((a,i)=>`<b>EMV(${a})</b> = ${fm(L[i][0])} ${sg(L[i][1])}·p`).join('<br>')}</p>`+tb(['Range of p','Preferred alternative'],seg.map(s=>[`${fm(s.lo)} ≤ p ≤ ${fm(s.h)}`,s.l]),[])+
+`<p class="why">Why: the last state is the remainder, so each EMV is a straight line in p, EMV = (payoff in the last state) + p × Σ k × (payoff − payoff in the last state). The best alternative changes where two lines cross; at the borders of a range the alternatives tie. ${pm<1?`The last probability turns negative when p > ${fm(pm)}, so only 0 ≤ p ≤ ${fm(pm)} are valid probabilities.`:''}</p>`}
+
+document.addEventListener('input',e=>{const t=e.target,k=t.dataset.k;if(!k)return;const i=t.dataset.i,j=t.dataset.j,v=t.type=='number'?+t.value||0:t.value;
+if(i!==undefined&&j!==undefined)D[k][i][j]=v;else D[k][i??j]=v;calc()});
+document.addEventListener('click',e=>{const t=e.target,d=t.dataset.del;if(!d)return;const i=+t.dataset.n;
+if(d=='A'){if(D.A.length<3)return;[D.A,D.X,D.Q,D.a,D.v,D.f].forEach(x=>x.splice(i,1))}
+else{if(D.S.length<3)return;D.S.splice(i,1);[D.X,D.Q].forEach(M=>M.forEach(r=>r.splice(i,1)));[D.s,D.g,D.p].forEach(x=>x.splice(i,1))}
+render()});
+$('#aA').onclick=()=>{D.A.push('Alternative '+(D.A.length+1));render()};
+$('#aS').onclick=()=>{D.S.push('State '+(D.S.length+1));render()};
+$('#mode').onchange=e=>{D.b=+e.target.value;render()};
+$('#selN').oninput=calc;$('#selC').onchange=calc;
+$('#clr').onclick=()=>{if(confirm('Clear everything and start over?'))load()};
+load();
+</script></body></html>
